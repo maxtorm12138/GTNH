@@ -1,0 +1,30 @@
+services:
+  gtnh-server:
+    image: itzg/minecraft-server:java25
+    tty: true
+    stdin_open: true
+    network_mode: "host"
+    environment:
+      EULA: "TRUE"
+      TYPE: GTNH
+      UID: 1001
+      GID: 1001
+      MEMORY: 6G
+      GTNH_PACK_VERSION: "2.8.4"
+      GTNH_DELETE_BACKUPS: FALSE
+      SKIP_GTNH_UPDATE_CHECK: FALSE
+      CREATE_CONSOLE_IN_PIPE: "true"
+      LEVEL: GTNH-WORLD
+      SERVER_PORT: 37000
+      VIEW_DISTANCE: 32
+      WHITELIST: |
+        maxtorm12138
+      OPS: |
+        maxtorm12138
+    volumes:
+      - ./config:/config
+      - ./mods:/mods
+      - ./serverutilities:/data/serverutilities
+      - /data/save/GTNH-WORLD:/data/GTNH-WORLD
+      - /data/backups:/data/backups
+      - /data/server/:/data

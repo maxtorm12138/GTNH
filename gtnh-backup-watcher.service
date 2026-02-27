@@ -1,0 +1,15 @@
+[Unit]
+Description=GTNH Backup Watcher - sync new backups to COS
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/bin/bash /root/gtnh-backup-script/watch-backups.sh
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
