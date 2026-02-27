@@ -1,10 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# 确保 coscli 日志目录可写
-touch coscli.log 2>/dev/null || true
-chmod 666 coscli.log 2>/dev/null || true
-
 SRC="/data/backups"
 DST="/tmp/gtnh-backup-stag"
 
@@ -103,7 +99,7 @@ COS_PATH="/"
 
 echo ""
 echo "=== Uploading to Tencent COS ==="
-coscli sync "$DST" "${COS_BUCKET}${COS_PATH}" -r -e "cos.${COS_REGION}.myqcloud.com" 2>/dev/null
+coscli sync "$DST" "${COS_BUCKET}${COS_PATH}" -r -e "cos.${COS_REGION}.myqcloud.com" --disable-log
 echo "[DONE] COS upload complete"
 
 MAX_PARTIAL=8
@@ -117,7 +113,7 @@ for world_dir in "$SRC"/*/; do
     world_name=$(basename "$world_dir")
     cos_prefix="${COS_BUCKET}${COS_PATH}${world_name}/"
 
-    all_files=$(coscli ls "${cos_prefix}" -e "$COS_ENDPOINT" 2>/dev/null \
+    all_files=$(coscli ls "${cos_prefix}" -e "$COS_ENDPOINT" --disable-log 2>/dev/null \
         | awk -F'|' 'NR>2 {gsub(/^[ \t]+|[ \t]+$/, "", $1); if ($1 ~ /\.zip$/) print $1}')
 
     for suffix in partial full; do
@@ -142,7 +138,7 @@ for world_dir in "$SRC"/*/; do
         while IFS= read -r obj; do
             [ -z "$obj" ] && continue
             echo "    Deleting: $obj"
-            coscli rm "${COS_BUCKET}/${obj}" -e "$COS_ENDPOINT" 2>/dev/null
+            coscli rm "${COS_BUCKET}/${obj}" -e "$COS_ENDPOINT" --disable-log
         done <<< "$to_delete"
     done
 done
