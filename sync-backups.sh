@@ -99,11 +99,11 @@ COS_PATH="/"
 
 echo ""
 echo "=== Uploading to Tencent COS ==="
-coscli sync "$DST" "${COS_BUCKET}${COS_PATH}" -r -e "cos.${COS_REGION}.myqcloud.com" --disable-log
+coscli sync "$DST" "${COS_BUCKET}${COS_PATH}" -r -e "cos.${COS_REGION}.myqcloud.com" --disable-log --rate-limiting 0.25 --thread-num 2
 echo "[DONE] COS upload complete"
 
-MAX_PARTIAL=8
-MAX_FULL=3
+MAX_PARTIAL=32
+MAX_FULL=4
 
 echo ""
 echo "=== Purging old backups on COS ==="

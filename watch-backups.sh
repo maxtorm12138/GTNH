@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-WATCH_DIR="/mnt/server/gtnh-backups"
+WATCH_DIR="/data/backups"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SYNC_SCRIPT="$SCRIPT_DIR/sync-backups.sh"
 COOLDOWN=30
@@ -25,6 +25,12 @@ inotifywait -m -r -e close_write -e moved_to --format '%w%f' "$WATCH_DIR" | whil
 
     if [[ "$filename" == *incomplete* ]]; then
         echo "[SKIP] Incomplete file: $filename"
+        continue
+    fi
+
+    hour=$(date +%-H)
+    if (( hour < 3 || hour >= 12 )); then
+        echo "[SKIP] Outside sync window (03:00-12:00), ignoring: $filename"
         continue
     fi
 
