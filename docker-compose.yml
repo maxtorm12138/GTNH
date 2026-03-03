@@ -9,14 +9,14 @@ services:
       TYPE: GTNH
       UID: 1001
       GID: 1001
-      MEMORY: 6G
+      MEMORY: 8G
       GTNH_PACK_VERSION: "2.8.4"
       GTNH_DELETE_BACKUPS: FALSE
       SKIP_GTNH_UPDATE_CHECK: FALSE
       CREATE_CONSOLE_IN_PIPE: "true"
       LEVEL: GTNH-WORLD
       SERVER_PORT: 37000
-      VIEW_DISTANCE: 32
+      VIEW_DISTANCE: 16
       WHITELIST: |
         maxtorm12138
       OPS: |
