@@ -99,7 +99,7 @@ COS_PATH="/"
 
 echo ""
 echo "=== Uploading to Tencent COS ==="
-coscli sync "$DST" "${COS_BUCKET}${COS_PATH}" -r -e "cos.${COS_REGION}.myqcloud.com" --disable-log --rate-limiting 0.25 --thread-num 2
+coscli sync "$DST" "${COS_BUCKET}${COS_PATH}" -r -e "cos.${COS_REGION}.myqcloud.com" --disable-log
 echo "[DONE] COS upload complete"
 
 MAX_PARTIAL=32
