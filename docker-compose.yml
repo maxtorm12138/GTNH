@@ -1,6 +1,6 @@
 services:
   gtnh-server:
-    image: ghcr.io/maxtorm12138/gtnh-server:java21
+    image: ghcr.io/maxtorm12138/gtnh-server:java25
     tty: true
     stdin_open: true
     network_mode: "host"
