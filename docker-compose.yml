@@ -1,10 +1,13 @@
 services:
   gtnh-server:
-    image: itzg/minecraft-server:java21
+    image: ghcr.io/maxtorm12138/gtnh-server:java21
     tty: true
     stdin_open: true
     network_mode: "host"
+    userns_mode: keep-id
     environment:
+      USER_UID: "1000"
+      USER_GID: "1000"
       EULA: "TRUE"
       TYPE: GTNH
       MEMORY: 8G
