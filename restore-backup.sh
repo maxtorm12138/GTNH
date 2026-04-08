@@ -4,8 +4,8 @@
 # 语义与恢复步骤与上游一致（见 https://github.com/HeatherComputer/AdvancedBackups ）：
 # - README「Backup Types」：differential 下 partial 仅含自上一次 *full* 以来变更的文件；incremental 才是基于上一档 partial。
 # - 恢复逻辑同 core/.../cli/AdvancedBackupsCLI.java 的 restoreFullDifferential（非 restoreFullIncremental）：
-#   选中 *-full 只还原该包；选中 *-partial 时，在按文件名排序的列表中从该项向前找到最近的 *-full*，
-#   先还原该 full，再还原选中的 partial（不还原二者之间的其它 partial）。
+#   选中 *-full 只还原该包；选中 *-partial 时，在时间降序列表中向更旧方向找到最近的 *-full*，
+#   先还原该 full，再还原选中的 partial（与 CLI 在升序列表上从选中项向索引 0 扫描等价）。
 set -euo pipefail
 
 BACKUP_ROOT="${BACKUP_ROOT:-/data/backups}"
@@ -50,8 +50,8 @@ fi
 command -v unzip >/dev/null || die "未找到 unzip 命令，请先安装"
 
 # 文件名示例：backup_2026-03-30_11-18-14-partial.zip、backup_2026-04-04_10-18-52-full.zip
-# 排序键为去掉 -full / -partial 后的前缀（如 backup_2026-03-30_11-18-14），按字典序即时间序
-list_backups_sorted_asc() {
+# 排序键为去掉 -full / -partial 后的前缀；按字典序逆序 = 时间降序（最新在前）
+list_backups_sorted_desc() {
     local diff_dir=$1
     local f base stamp
     shopt -s nullglob
@@ -65,7 +65,7 @@ list_backups_sorted_asc() {
             *) continue ;;
         esac
         printf '%s\t%s\n' "$stamp" "$f"
-    done | sort -t$'\t' -k1,1
+    done | sort -t$'\t' -k1,1 -r
 }
 
 # 将排序键或旧式纯数字时间戳转为可读时间
@@ -90,7 +90,7 @@ format_stamp_human() {
     printf '%s' "$human"
 }
 
-# 对齐 AdvancedBackupsCLI.restoreFullDifferential
+# 对齐 AdvancedBackupsCLI.restoreFullDifferential；列表按时间降序，故从选中 partial 向「更旧」方向（更大下标）找最近 full
 resolve_chain() {
     local diff_dir=$1
     local selected=$2
@@ -99,7 +99,7 @@ resolve_chain() {
     while IFS=$'\t' read -r stamp f; do
         [ -n "$f" ] || continue
         sorted+=("$f")
-    done < <(list_backups_sorted_asc "$diff_dir")
+    done < <(list_backups_sorted_desc "$diff_dir")
 
     [ ${#sorted[@]} -eq 0 ] && die "在 $diff_dir 未找到 *-full.zip / *-partial.zip（例如 backup_YYYY-MM-DD_HH-MM-SS-full.zip）"
 
@@ -119,8 +119,8 @@ resolve_chain() {
         return 0
     fi
 
-    local j name
-    for (( j = sel_idx; j >= 0; j-- )); do
+    local j name n=${#sorted[@]}
+    for (( j = sel_idx + 1; j < n; j++ )); do
         name=$(basename "${sorted[j]}" .zip)
         if [[ "$name" == *-full ]]; then
             printf '%s\n' "${sorted[j]}"
@@ -128,7 +128,7 @@ resolve_chain() {
             return 0
         fi
     done
-    die "在排序列表中，该 partial 之前没有 *-full.zip（无法按 differential 规则恢复）: $selected"
+    die "在排序列表中，该 partial 之后（更旧方向）没有 *-full.zip（无法按 differential 规则恢复）: $selected"
 }
 
 pick_world() {
@@ -169,7 +169,7 @@ pick_backup() {
     while IFS=$'\t' read -r stamp f; do
         [ -n "$f" ] || continue
         sorted+=("$f")
-    done < <(list_backups_sorted_asc "$diff_dir")
+    done < <(list_backups_sorted_desc "$diff_dir")
 
     [ ${#sorted[@]} -eq 0 ] && die "目录中无可用备份: $diff_dir"
 
@@ -186,7 +186,7 @@ pick_backup() {
         [ "$end" -ge "$total" ] && end=$((total - 1))
 
         echo "" >&2
-        echo "可选备份（按文件名排序；全局序号 1–${total}，各页相同）： 第 $((page + 1))/$((max_page + 1)) 页" >&2
+        echo "可选备份（按时间降序，序号越小越新；全局序号 1–${total}）： 第 $((page + 1))/$((max_page + 1)) 页" >&2
         local b hstamp human
         for (( i = start; i <= end; i++ )); do
             b=$(basename "${sorted[i]}")
