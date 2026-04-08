@@ -11,6 +11,7 @@ set -euo pipefail
 BACKUP_ROOT="${BACKUP_ROOT:-/data/backups}"
 WORLD_PATH="${WORLD_PATH:-/data/save/GTNH-WORLD}"
 RESTORE_TMP="${RESTORE_TMP:-/tmp/gtnh-restore.$$}"
+BACKUP_PAGE_SIZE="${BACKUP_PAGE_SIZE:-20}"
 
 die() { echo "[ERROR] $*" >&2; exit 1; }
 
@@ -25,7 +26,8 @@ usage() {
   BACKUP_ROOT   备份根目录 (默认: /data/backups)
   WORLD_PATH    要覆盖的存活档目录 (默认: /data/save/GTNH-WORLD，宿主机路径；
                 若在容器内执行请设为 /data/GTNH-WORLD)
-  RESTORE_TMP   解压临时目录 (默认: /tmp/gtnh-restore.<pid>)
+  RESTORE_TMP       解压临时目录 (默认: /tmp/gtnh-restore.<pid>)
+  BACKUP_PAGE_SIZE  备份列表每页条数 (默认: 20)
 
 选项:
   -h, --help    显示此说明
@@ -171,30 +173,78 @@ pick_backup() {
 
     [ ${#sorted[@]} -eq 0 ] && die "目录中无可用备份: $diff_dir"
 
-    echo "" >&2
-    echo "可选备份（按文件名排序，与 AdvancedBackups CLI 一致；通常序号越大越新）：" >&2
-    local i b hstamp human
-    for i in "${!sorted[@]}"; do
-        b=$(basename "${sorted[i]}")
-        hstamp=$(basename "$b" .zip)
-        hstamp=${hstamp%-full}
-        hstamp=${hstamp%-partial}
-        human=$(format_stamp_human "$hstamp")
-        if [[ "$b" == *-full.zip ]]; then
-            printf '  %2d) [full]  %s  (%s)\n' "$((i + 1))" "$b" "$human" >&2
-        else
-            printf '  %2d) [partial] %s  (%s)\n' "$((i + 1))" "$b" "$human" >&2
-        fi
-    done
+    local total=${#sorted[@]}
+    local page_size=$BACKUP_PAGE_SIZE
+    [[ "$page_size" =~ ^[1-9][0-9]*$ ]] || page_size=20
+    local max_page=$(( (total + page_size - 1) / page_size - 1 ))
+    [ "$max_page" -lt 0 ] && max_page=0
 
-    local choice
+    local page=0 start end i
     while true; do
-        read -r -p "输入要恢复的序号 [1-${#sorted[@]}]: " choice || exit 1
-        if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le ${#sorted[@]} ]; then
-            printf '%s\n' "${sorted[$((choice - 1))]}"
-            return 0
+        start=$((page * page_size))
+        end=$((start + page_size - 1))
+        [ "$end" -ge "$total" ] && end=$((total - 1))
+
+        echo "" >&2
+        echo "可选备份（按文件名排序；全局序号 1–${total}，各页相同）： 第 $((page + 1))/$((max_page + 1)) 页" >&2
+        local b hstamp human
+        for (( i = start; i <= end; i++ )); do
+            b=$(basename "${sorted[i]}")
+            hstamp=$(basename "$b" .zip)
+            hstamp=${hstamp%-full}
+            hstamp=${hstamp%-partial}
+            human=$(format_stamp_human "$hstamp")
+            if [[ "$b" == *-full.zip ]]; then
+                printf '  %2d) [full]  %s  (%s)\n' "$((i + 1))" "$b" "$human" >&2
+            else
+                printf '  %2d) [partial] %s  (%s)\n' "$((i + 1))" "$b" "$human" >&2
+            fi
+        done
+
+        echo "" >&2
+        if [ "$total" -le "$page_size" ]; then
+            echo "输入全局序号 [1-${total}] 选择要恢复的备份。" >&2
+        else
+            echo "输入全局序号 [1-${total}] 选择；n 下一页；p 上一页" >&2
         fi
-        echo "无效输入，请重试。" >&2
+        local choice
+        read -r -p "> " choice || exit 1
+        choice=$(printf '%s' "$choice" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+
+        case "$choice" in
+            n|N)
+                if [ "$page" -lt "$max_page" ]; then
+                    page=$((page + 1))
+                else
+                    echo "[提示] 已是最后一页。" >&2
+                fi
+                ;;
+            p|P)
+                if [ "$page" -gt 0 ]; then
+                    page=$((page - 1))
+                else
+                    echo "[提示] 已是第一页。" >&2
+                fi
+                ;;
+            '')
+                if [ "$total" -gt "$page_size" ]; then
+                    if [ "$page" -lt "$max_page" ]; then
+                        page=$((page + 1))
+                    else
+                        echo "[提示] 已是最后一页；请输入序号或 p。" >&2
+                    fi
+                else
+                    echo "请输入序号 [1-${total}]。" >&2
+                fi
+                ;;
+            *)
+                if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "$total" ]; then
+                    printf '%s\n' "${sorted[$((choice - 1))]}"
+                    return 0
+                fi
+                echo "无效输入，请重试。" >&2
+                ;;
+        esac
     done
 }
 
