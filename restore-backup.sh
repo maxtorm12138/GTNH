@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 # 从 AdvancedBackups 差分备份恢复世界。恢复前请务必停止 Minecraft 服务器。
+#
+# 备份语义（differential）：*-full.zip 为完整快照；*-partial.zip 是在「当前链上最近一次 full」
+# 的基础上只打包变动部分。恢复时先解压对应 full，再解压 partial 覆盖/合并即可，无需依次解压
+# 中间多个 partial。
 set -euo pipefail
 
 BACKUP_ROOT="${BACKUP_ROOT:-/data/backups}"
@@ -12,7 +16,8 @@ usage() {
     cat <<'EOF'
 用法: restore-backup.sh [选项]
 
-  从 BACKUP_ROOT 下某一世界的 differential 备份中交互选择时间点，并恢复到 WORLD_PATH。
+  从 BACKUP_ROOT 下某一世界的 differential 备份中交互选择，并恢复到 WORLD_PATH。
+  增量包 partial 表示相对最近一次 full 的变动；恢复增量时使用目录内最新 full + 最新 partial。
 
 环境变量:
   BACKUP_ROOT   备份根目录 (默认: /data/backups)
@@ -81,7 +86,9 @@ format_stamp_human() {
     printf '%s' "$human"
 }
 
-# 解析从链起点到选中文件（含）需依次解压的 zip 列表
+# 增量恢复：只解压「最新 full + 最新 partial」——partial 为基于该链上 full 的差分，与 sync-backups 一致
+# 全量恢复：仅解压所选的那一个 *-full.zip
+# __INCREMENTAL_LATEST__：走上述两包
 resolve_chain() {
     local diff_dir=$1
     local selected=$2
@@ -94,34 +101,28 @@ resolve_chain() {
 
     [ ${#sorted[@]} -eq 0 ] && die "在 $diff_dir 未找到 *-full.zip / *-partial.zip（例如 backup_YYYY-MM-DD_HH-MM-SS-full.zip）"
 
-    local i sel_idx=-1
-    for i in "${!sorted[@]}"; do
-        if [ "${sorted[$i]}" = "$selected" ]; then
-            sel_idx=$i
-            break
-        fi
-    done
-    [ "$sel_idx" -ge 0 ] || die "所选文件不在备份列表中: $selected"
+    if [ "$selected" = "__INCREMENTAL_LATEST__" ]; then
+        local newest_full="" newest_partial="" b
+        for f in "${sorted[@]}"; do
+            b=$(basename "$f" .zip)
+            [[ "$b" == *-full ]] && newest_full="$f"
+            [[ "$b" == *-partial ]] && newest_partial="$f"
+        done
+        [ -n "$newest_full" ] || die "未找到 *-full.zip，无法做增量恢复"
+        [ -n "$newest_partial" ] || die "未找到 *-partial.zip，无法做增量恢复"
+        printf '%s\n' "$newest_full"
+        printf '%s\n' "$newest_partial"
+        return 0
+    fi
 
-    local base name
+    local base
     base=$(basename "$selected" .zip)
     if [[ "$base" == *-full ]]; then
         printf '%s\n' "$selected"
         return 0
     fi
 
-    local j
-    for (( j = sel_idx; j >= 0; j-- )); do
-        name=$(basename "${sorted[j]}" .zip)
-        if [[ "$name" == *-full ]]; then
-            local k
-            for (( k = j; k <= sel_idx; k++ )); do
-                printf '%s\n' "${sorted[k]}"
-            done
-            return 0
-        fi
-    done
-    die "未找到与所选 partial 对应的全量备份（*-full.zip）: $selected"
+    die "内部错误：未知的恢复选项"
 }
 
 pick_world() {
@@ -166,27 +167,45 @@ pick_backup() {
 
     [ ${#sorted[@]} -eq 0 ] && die "目录中无可用备份: $diff_dir"
 
-    echo "" >&2
-    echo "可选备份（按时间先后排序，序号越大通常越新）：" >&2
-    local i b stamp human
-    for i in "${!sorted[@]}"; do
-        b=$(basename "${sorted[i]}")
-        stamp=$(basename "$b" .zip)
-        stamp=${stamp%-full}
-        stamp=${stamp%-partial}
-        human=$(format_stamp_human "$stamp")
-        if [[ "$b" == *-full.zip ]]; then
-            printf '  %2d) [全量] %s  (%s)\n' "$((i + 1))" "$b" "$human" >&2
-        else
-            printf '  %2d) [增量] %s  (%s)\n' "$((i + 1))" "$b" "$human" >&2
-        fi
+    local -a full_paths=()
+    local newest_full="" newest_partial="" b
+    for f in "${sorted[@]}"; do
+        b=$(basename "$f" .zip)
+        [[ "$b" == *-full ]] && { full_paths+=("$f"); newest_full="$f"; }
+        [[ "$b" == *-partial ]] && newest_partial="$f"
     done
+
+    [ ${#full_paths[@]} -gt 0 ] || die "目录中无 *-full.zip，无法恢复"
+
+    echo "" >&2
+    echo "可选备份（全量：任选其一；增量：仅最新 full + 最新 partial，与同步脚本一致）：" >&2
+    local i hstamp human
+    for i in "${!full_paths[@]}"; do
+        b=$(basename "${full_paths[i]}")
+        hstamp=$(basename "$b" .zip)
+        hstamp=${hstamp%-full}
+        human=$(format_stamp_human "$hstamp")
+        printf '  %2d) [全量] %s  (%s)\n' "$((i + 1))" "$b" "$human" >&2
+    done
+
+    local max_choice=${#full_paths[@]}
+    if [ -n "$newest_partial" ]; then
+        max_choice=$((max_choice + 1))
+        local hf hp
+        hf=$(basename "$newest_full")
+        hp=$(basename "$newest_partial")
+        printf '  %2d) [增量·最新] %s + %s\n' "$max_choice" "$hf" "$hp" >&2
+    fi
 
     local choice
     while true; do
-        read -r -p "输入要恢复的序号 [1-${#sorted[@]}]: " choice || exit 1
-        if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le ${#sorted[@]} ]; then
-            printf '%s\n' "${sorted[$((choice - 1))]}"
+        read -r -p "输入要恢复的序号 [1-${max_choice}]: " choice || exit 1
+        if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "$max_choice" ]; then
+            if [ -n "$newest_partial" ] && [ "$choice" -eq "$max_choice" ]; then
+                printf '%s\n' "__INCREMENTAL_LATEST__"
+            else
+                printf '%s\n' "${full_paths[$((choice - 1))]}"
+            fi
             return 0
         fi
         echo "无效输入，请重试。" >&2
