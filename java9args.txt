@@ -2,7 +2,6 @@
 -Djava.system.class.loader=com.gtnewhorizons.retrofuturabootstrap.RfbSystemClassLoader
 -Duser.timezone=Asia/Shanghai
 -XX:+UseZGC
--XX:+ZGenerational
 --add-opens
 java.base/java.io=ALL-UNNAMED
 --add-opens
