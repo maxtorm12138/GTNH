@@ -26,6 +26,7 @@ services:
     volumes:
       - ./config:/config
       - ./mods:/mods
+      - ./java9args.txt:/data/java9args.txt
       - ./serverutilities:/data/serverutilities
       - /data/save/GTNH-WORLD:/data/GTNH-WORLD
       - /data/backups:/data/backups
