@@ -1,7 +1,6 @@
 -Dfile.encoding=UTF-8
 -Djava.system.class.loader=com.gtnewhorizons.retrofuturabootstrap.RfbSystemClassLoader
 -Duser.timezone=Asia/Shanghai
--XX:+UseShenandoahGC
 --add-opens
 java.base/java.io=ALL-UNNAMED
 --add-opens
